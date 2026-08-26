@@ -9,7 +9,7 @@ from config import RSS_FEEDS,  MAX_ARTICLES_PER_FEED
 
 SCRAPE_TIMEOUT   = 10    # seconds to wait per article before giving up
 SCRAPE_MAX_CHARS = 3000  # truncate so AI prompt stays a reasonable size
-SCRAPE_WORKERS   = 8     # how many articles to download at the same time
+SCRAPE_WORKERS   = 1     # how many articles to download at the same time
 
 
 ###DATE FIXER FUNCTION
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     for article in articles[:5]:
         print(f"SOURCE:    {article['source']}")
         print(f"TITLE:     {article['title']}")
-        print(f"PUBLISHED: {article['published']}")
+        print(f"PUBLISHED: {article['published']}") 
         print(f"URL:       {article['url']}")
         body = article["full_text"] or article["raw_summary"]  # prefer full text, fall back to RSS excerpt
         print(f"BODY:      {body[:150]}...") # takes the first 150 characters

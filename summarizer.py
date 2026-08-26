@@ -4,57 +4,98 @@ from config import GROQ_API_KEY
 
 client = Groq(api_key=GROQ_API_KEY)
 
-#enai.configure(api_key=GEMINI_API_KEY) # logged in
-#model = genai.GenerativeModel("gemini-2.0-flash") #line open, creates model object
-
-# THE PROMPT 
-# this is the most important thing to understand — the prompt IS the programming
-#{{ }}, double curly braces - final output will be {}
 PROMPT_TEMPLATE = """
-You are a molecular biologist and biotech research scientist reviewing primary literature and industry news. Your reader is a biotech graduate student who wants scientific depth, not a lay summary.
+You are a senior biotech analyst writing intelligence briefings.
 
-Given the article title and text below, respond ONLY with a JSON object in exactly this format:
+READER PROFILE — use this to shape every summary:
+- Technical level: {technical_level}
+  Beginner = explain everything simply, no jargon at all
+  Intermediate = plain English with terms explained inline
+  Expert = keep technical depth but still explain clearly
+- Focus areas: {focus_areas}
+  Emphasise angles related to these areas in every field
+- What matters most: {what_matters}
+  Give extra depth to fields matching these priorities
+- Companies to watch: {companies}
+  If any appear in the article, flag them explicitly with a note
+- Keywords to flag: {keywords}
+  If any appear in the article, flag them explicitly with a note
+
+RULES:
+- 1-2 sentences max per field
+- Write in plain English — explain what things do, not just what they are called
+- When you use a scientific term, immediately explain it in plain English in the same sentence
+  Good example: 'CRISPR-Cas9 (a gene editing tool that works like molecular scissors) cut out the faulty gene'
+  Bad example: 'Cas9 nuclease activity at the KRAS G12C locus via electroporation of RNP complexes'
+- ALWAYS keep every number, percentage, statistic, trial phase, patient count, response rate,
+  survival data, market size, deal value, and timeline — these are non-negotiable
+- Extract every specific detail the article provides — drug names, companies, trial phases, numbers
+- Where the article lacks detail, add ONE sentence of relevant context from your knowledge
+- Never write generic filler — every sentence must add value
+- Never repeat the same point across fields
+- If a company or keyword from the reader profile appears, start that sentence with FLAG:
+
+TONE: Explain to a smart friend who understands business and data but is not a scientist.
+They want the numbers and what they mean, not the molecular mechanism described in Latin.
+
+Respond ONLY with this JSON — no markdown, no code fences:
 {{
-    "technology": "Name the specific therapeutic modality and molecule — e.g. 'AAV9-packaged CRISPR base editor targeting exon 23 of DMD', 'bispecific CD3×CD19 IgG1 antibody', 'LNP-formulated mRNA encoding spike protein'. Describe what it physically does at the molecular level.",
-    "mechanism": "Name the exact molecular target(s), cell types, and pathway involved — e.g. 'blocks PD-L1 on tumor-associated macrophages, relieving suppression of CD8+ T cells via the PD-1/PD-L1 checkpoint axis'. Include receptor subtypes, gene symbols, or protein domains when stated.",
-    "evolution": "What does this replace or improve on scientifically — name the predecessor approach and the specific advantage (e.g. higher HDR efficiency vs. NHEJ, reduced off-target editing, broader HLA coverage, improved half-life vs. first-gen antibody).",
-    "stage": "Development stage — research / preclinical / IND-filed / Phase 1 / Phase 2 / Phase 3 / BLA or NDA submitted / FDA approved. Include any regulatory designations: Breakthrough Therapy, Fast Track, Orphan Drug, Accelerated Approval.",
-    "results": "Key quantitative outcomes — efficacy (ORR, OS, PFS, editing efficiency %, AAV transduction rate), safety (DLTs, grade 3+ AEs, immunogenicity), or biomarker data with patient numbers and p-values where reported. Write 'Not reported' if absent.",
-    "importance": "Why this matters — clinical impact (unmet need addressed, patient population size, survival improvement), scientific significance (paradigm shift, first-in-class), or market relevance (disease burden, competitive landscape).",
-    "future": "Next scientific or commercial steps — upcoming data readouts, Phase expansion, IND plans, partnership or licensing deals, regulatory milestones, or projected market size with timeframe."
+    "technology": "1-2 sentences max. What this technology does in plain English, how it works simply explained, what makes it different from existing approaches. Include the technical name but explain it immediately.",
+    "stage": "1-2 sentences max. Where this is in development — research, animal testing, human trials which phase, or approved. Include patient numbers, trial locations, eligibility if known.",
+    "results": "1-2 sentences max. ALL numbers and data points — response rates, survival rates, percentages, comparisons to existing treatments. Explain what each number means for patients in plain English.",
+    "importance": "1-2 sentences max. What problem this solves in plain English, how many people are affected globally, why current treatments fail, what changes for patients if this works.",
+    "market": "1-2 sentences max. Market size in dollars, named competitors and where they are in development, deal values, commercial potential and timeline to revenue.",
+    "limitations": "1-2 sentences max. What could go wrong in plain English, safety concerns with numbers if available, regulatory hurdles, manufacturing or scaling challenges.",
+    "next_steps": "1-2 sentences max. What happens next with specific timelines, planned trials, upcoming regulatory decisions, conference presentations, partnerships to watch."
 }}
-
-Rules:
-- Respond with JSON only — no extra text, no markdown, no code fences
-- Always use the specific names from the article: drug names, gene symbols, protein targets, cell types, pathways
-- Include every number, percentage, or p-value mentioned — precision matters
-- If a field cannot be answered from the article, write "Not specified in article" — never fabricate
-- Prioritise molecular mechanism and quantitative data over vague high-level statements
 
 Article title: {title}
 Article text: {excerpt}
 """
 
 # FUNCTION 1 — summarise a single article
-def summarize_article(title, raw_summary, full_text=""): # title and raw_summary come in from fetcher.py's article dict
+def summarize_article(title, raw_summary, full_text="", profile=None):
     best_text = full_text if full_text else raw_summary
+
+    if profile:
+        technical_level = profile.get("technical_level", "Intermediate")
+        focus_areas     = ", ".join(profile.get("focus_areas", [])) or "General biotech"
+        what_matters    = ", ".join(profile.get("what_matters", [])) or "The science, the data"
+        companies       = profile.get("companies", "") or "none specified"
+        keywords        = profile.get("keywords", "") or "none specified"
+    else:
+        technical_level = "Intermediate"
+        focus_areas     = "General biotech"
+        what_matters    = "The science, the data"
+        companies       = "none specified"
+        keywords        = "none specified"
+
     prompt = PROMPT_TEMPLATE.format(
         title=title,
-        excerpt= best_text or "no excerpt available" # fallback if summary is empty
+        excerpt=best_text or "no excerpt available",
+        technical_level=technical_level,
+        focus_areas=focus_areas,
+        what_matters=what_matters,
+        companies=companies,
+        keywords=keywords,
     )
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile", 
+            model="openai/gpt-oss-120b",  # old model retired on this account — largest general-purpose model available
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=800
-            )
-        raw_text = response.choices[0].message.content.strip() #raw string that gemini returns
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip() #sometimes in markdown code, fixes that
-        results = json.loads(raw_text)# turns text strings into python dictionary
+            max_tokens=2500,
+        )
+        raw_text = response.choices[0].message.content.strip()
+        # extract just the JSON object — ignore any text before { or after }
+        start = raw_text.find("{")
+        end   = raw_text.rfind("}") + 1
+        if start == -1 or end == 0:
+            return {"error": "Groq returned no JSON"}
+        results = json.loads(raw_text[start:end])
         return results
 
-    except json.JSONDecodeError:
-        return {"error": "Gemini returned invalid JSON"}
+    except json.JSONDecodeError as e:
+        return {"error": f"Groq returned invalid JSON: {e}"}
 
     except Exception as e: # any other error — bad API key, rate limit, network issue etc
         return {"error": f"API call failed: {e}"}
@@ -81,7 +122,7 @@ if __name__ == "__main__":# we import fetch here so we can grab one real article
     test_article = articles[0]
     print(f"\nTitle: {test_article['title']}")
     print(f"Raw summary: {test_article['raw_summary'][:300]}...")
-    print("\Sending to AI...")
+    print("\nSending to AI...")
 
     result = summarize_article(test_article["title"], test_article["raw_summary"])
 
@@ -89,10 +130,11 @@ if __name__ == "__main__":# we import fetch here so we can grab one real article
     if "error" in result:
         print(f"Error: {result['error']}")
     else:
-        print(f"Technology:   {result['technology']}")
-        print(f"Evolution:    {result['evolution']}")
-        print(f"Importance:   {result['importance']}")
-        print(f"Stage:        {result['stage']}")
-        print(f"Results:      {result['results']}")
-        print(f"Future:       {result['future']}")
+        print(f"Technology:   {result.get('technology', '—')}")
+        print(f"Stage:        {result.get('stage', '—')}")
+        print(f"Results:      {result.get('results', '—')}")
+        print(f"Importance:   {result.get('importance', '—')}")
+        print(f"Market:       {result.get('market', '—')}")
+        print(f"Limitations:  {result.get('limitations', '—')}")
+        print(f"Next Steps:   {result.get('next_steps', '—')}")
 
