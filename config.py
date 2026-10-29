@@ -2,6 +2,17 @@ import os
 from dotenv import load_dotenv
 load_dotenv()  # reads the .env file
 
+# Streamlit Cloud secrets land in st.secrets, not os.environ — bridge them across
+# so every os.getenv() call below works the same locally (.env) and on Cloud.
+# Wrapped in try/except so this is a no-op outside a Streamlit context, e.g. the
+# GitHub Actions Monday digest job, which sets real env vars directly.
+try:
+    import streamlit as st
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
