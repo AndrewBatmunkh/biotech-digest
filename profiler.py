@@ -46,9 +46,11 @@ DIGEST_FREQUENCY = [
 # called by app.py when no profile exists
 # ─────────────────────────────────────────────
 
-def show_onboarding():
+def show_onboarding(default_email=""):
     """
     Renders the full onboarding UI.
+    default_email pre-fills the email field — used when the identity gate in
+    app.py already knows this is a brand-new email and is handing off here.
     Returns True when the user submits — signals app.py to reload.
     Returns False while still filling in the form.
     """
@@ -77,6 +79,7 @@ def show_onboarding():
     with col2:
         email = st.text_input(
             "Email address",
+            value=default_email,
             placeholder="andrew@email.com"
         )
 

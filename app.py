@@ -10,7 +10,7 @@ from summarizer import summarize_article #groq ai
 
 # at the top of app.py add this import
 from database import (
-    init_db, get_first_user, profile_exists, get_profile,
+    init_db, get_user, get_user_by_email, profile_exists, get_profile,
     star_article, unstar_article, get_starred, get_starred_count, update_note,
 )
 from profiler import show_onboarding
@@ -443,17 +443,41 @@ def build_sidebar(user_id, profile):
 # Streamlit reruns this entire function on every user interaction
 def main():
     init_db()
-    user = get_first_user()
 
-    if user is None or not profile_exists(user["id"]):
-        submitted = show_onboarding()
-        if submitted:
+    # identity gate — each browser session identifies itself by email so
+    # friends sharing the link each get their own profile/starred list
+    if "user_id" not in st.session_state:
+        if "new_user_email" in st.session_state:
+            # brand-new email — hand off straight to onboarding, pre-filled
+            submitted = show_onboarding(default_email=st.session_state["new_user_email"])
+            if submitted:
+                st.session_state.pop("new_user_email", None)
+                st.rerun()
+            return
+
+        st.markdown("## 🧬 Biotech Digest")
+        st.caption("Enter your email to continue")
+        email_input = st.text_input("Email address", placeholder="you@email.com")
+        if st.button("Continue →", type="primary"):
+            email_clean = email_input.strip()
+            if not email_clean:
+                st.error("Please enter your email address")
+                return
+            existing = get_user_by_email(email_clean)
+            if existing:
+                st.session_state["user_id"] = existing["id"]
+                st.session_state["user_name"] = existing["full_name"].split()[0]
+            else:
+                st.session_state["new_user_email"] = email_clean
             st.rerun()
         return
 
-    if "user_id" not in st.session_state:
-        st.session_state["user_id"] = user["id"]
-        st.session_state["user_name"] = user["full_name"].split()[0]
+    user = get_user(st.session_state["user_id"])
+    if user is None or not profile_exists(user["id"]):
+        submitted = show_onboarding(default_email=user["email"] if user else "")
+        if submitted:
+            st.rerun()
+        return
 
     if "view" not in st.session_state:
         st.session_state["view"] = "feed"

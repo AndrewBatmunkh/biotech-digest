@@ -128,6 +128,27 @@ def get_user(user_id):
     return None
 
 
+def get_user_by_email(email):
+    """Look up a user by email. Returns a dict or None."""
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, full_name, email, created_at FROM users WHERE email = %s",
+        (email,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return {
+            "id":         row[0],
+            "full_name":  row[1],
+            "email":      row[2],
+            "created_at": row[3]
+        }
+    return None
+
+
 def get_first_user():
     """
     Get the first user in the database.
