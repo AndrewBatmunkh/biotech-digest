@@ -11,16 +11,16 @@ from email.mime.multipart import MIMEMultipart
 from groq import Groq
 
 from config import (
-    EMAIL_ENABLED, EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD,
+    EMAIL_ENABLED, EMAIL_FROM, EMAIL_PASSWORD,
     SMTP_HOST, SMTP_PORT, TOPICS, TOP_N_FOR_DIGEST,
     APP_URL,  # Change 1 / Change 5: app URL that article links point to, defined in config.py
     GROQ_API_KEY,
 )
-from database import get_first_user, get_profile
+from database import get_all_users, get_profile
 from fetcher import fetch_all_articles
 from summarizer import summarize_article
 
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=GROQ_API_KEY, timeout=30.0)  # fail fast instead of hanging forever on a stuck request
 
 EMAIL_PROMPT = """
 You are writing a biotech email digest. Be punchy and scannable.
@@ -176,17 +176,12 @@ def _get_email_summary(article, profile=None):
 # MAIN FUNCTIONS
 # ─────────────────────────────────────────────
 
-def get_top_articles(n=TOP_N_FOR_DIGEST):
+def get_top_articles(user, n=TOP_N_FOR_DIGEST):
     """
-    Loads the user's profile, fetches all articles, summarises them with AI,
-    tags and scores each one, filters to the user's chosen focus areas,
+    Loads this user's profile, fetches all articles, summarises them with AI,
+    tags and scores each one, filters to this user's chosen focus areas,
     and returns the top N articles by relevance score.
     """
-    user = get_first_user()
-    if user is None:
-        print("❌ No user found in database.")
-        return []
-
     profile = get_profile(user["id"])
     focus_areas = profile.get("focus_areas", []) if profile else []
 
@@ -323,31 +318,30 @@ def build_html_email(user, articles):
     return subject, html
 
 
-def send_digest_email(articles=None):
+def send_digest_email(user, articles=None):
     """
-    Orchestrates the full send flow — fetches top articles if not provided,
-    builds the HTML email, and sends it via Gmail SMTP.
-    Returns True on success, False on failure.
+    Orchestrates the full send flow for one user — fetches their top articles
+    if not provided, builds the HTML email, and sends it to their own email
+    via Gmail SMTP. Returns True on success, False on failure.
     """
     if not EMAIL_ENABLED:
         print("❌ Email is disabled. Set EMAIL_ENABLED = True in config.py")
         return False
 
-    if not all([EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD]):
-        print("❌ Email credentials missing. Set EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD in .env")
+    if not all([EMAIL_FROM, EMAIL_PASSWORD]):
+        print("❌ Email credentials missing. Set EMAIL_FROM, EMAIL_PASSWORD in .env")
         return False
 
-    user = get_first_user()
-    if user is None:
-        print("❌ No user found in database.")
+    if not user.get("email"):
+        print(f"❌ User {user.get('full_name', user.get('id'))} has no email on file.")
         return False
 
     # fetch top articles if caller didn't pass them in
     if articles is None:
-        articles = get_top_articles()
+        articles = get_top_articles(user)
 
     if not articles:
-        print("❌ No articles to send.")
+        print(f"❌ No articles to send for {user['full_name']}.")
         return False
 
     subject, html_body = build_html_email(user, articles)
@@ -356,15 +350,15 @@ def send_digest_email(articles=None):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = EMAIL_FROM
-    msg["To"]      = EMAIL_TO
+    msg["To"]      = user["email"]
     msg.attach(MIMEText(html_body, "html"))
 
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()                         # upgrade to encrypted connection
             server.login(EMAIL_FROM, EMAIL_PASSWORD)  # authenticate with Gmail App Password
-            server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
-        print(f"✅ Digest sent to {EMAIL_TO}")
+            server.sendmail(EMAIL_FROM, user["email"], msg.as_string())
+        print(f"✅ Digest sent to {user['email']}")
         return True
 
     except smtplib.SMTPAuthenticationError:
@@ -373,17 +367,49 @@ def send_digest_email(articles=None):
         return False
 
     except Exception as e:
-        print(f"❌ Failed to send: {e}")
+        print(f"❌ Failed to send to {user['email']}: {e}")
         return False
+
+
+def send_all_digests():
+    """
+    Sends every signed-up user their own personalised digest — skips anyone
+    who chose "Off" for digest frequency during onboarding. This is what the
+    Monday GitHub Actions job calls so each person gets mailed separately.
+    """
+    users = get_all_users()
+    if not users:
+        print("❌ No users found in database.")
+        return
+
+    sent, skipped, failed = 0, 0, 0
+    for user in users:
+        try:
+            profile = get_profile(user["id"])
+            frequency = profile.get("digest_frequency") if profile else None
+            if frequency == "Off":
+                print(f"⏭️  Skipping {user['full_name']} — digest turned off.")
+                skipped += 1
+                continue
+
+            print(f"Building digest for {user['full_name']} ({user['email']})...")
+            if send_digest_email(user):
+                sent += 1
+            else:
+                failed += 1
+
+        except Exception as e:
+            # one broken user (bad DB row, unexpected error) must not stop
+            # everyone else in the batch from getting their digest
+            print(f"❌ Unexpected error for {user.get('full_name', user.get('id'))}: {e}")
+            failed += 1
+
+    print(f"\n✅ Sent {sent} · ⏭️ Skipped {skipped} · ❌ Failed {failed}")
 
 
 # ─────────────────────────────────────────────
 # TEST BLOCK — python3 emailer.py
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    print("Sending digest email...")
-    success = send_digest_email()
-    if success:
-        print("✅ Done — check your inbox.")
-    else:
-        print("❌ Failed — see errors above.")
+    print("Sending digests to all users...")
+    send_all_digests()

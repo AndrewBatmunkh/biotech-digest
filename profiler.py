@@ -6,10 +6,7 @@
 import streamlit as st
 from database import create_user, save_profile
 
-# ─────────────────────────────────────────────
-# ONBOARDING OPTIONS — edit these to change what's shown
-# ─────────────────────────────────────────────
-
+# onboarding questions and options
 TECHNICAL_LEVELS = [
     "Beginner      — I'm new to biotech, keep it simple",
     "Intermediate  — I know the basics, some jargon is fine",
@@ -36,16 +33,10 @@ WHAT_MATTERS = [
 
 DIGEST_FREQUENCY = [
     "Weekly  — Monday morning digest, curated top 15",
-    "Daily   — Top 3 articles every morning",
     "Off     — I'll use the app directly, no emails",
 ]
 
-
-# ─────────────────────────────────────────────
-# MAIN ONBOARDING FUNCTION
-# called by app.py when no profile exists
-# ─────────────────────────────────────────────
-
+#main prompt template for the AI summarizer — this is where the user profile is injected
 def show_onboarding(default_email=""):
     """
     Renders the full onboarding UI.
@@ -54,8 +45,7 @@ def show_onboarding(default_email=""):
     Returns True when the user submits — signals app.py to reload.
     Returns False while still filling in the form.
     """
-
-    # ── header ──
+    
     st.markdown("""
         <div style="text-align: center; padding: 40px 0 20px 0;">
             <h1 style="font-size: 2.5rem;">🧬 Biotech Digest</h1>
@@ -67,7 +57,7 @@ def show_onboarding(default_email=""):
     """, unsafe_allow_html=True)
 
     st.divider()
-
+    
     # ── name and email ──
     st.subheader("First, tell us who you are")
     col1, col2 = st.columns(2)
@@ -198,6 +188,6 @@ def show_onboarding(default_email=""):
         st.session_state["user_id"] = user_id
         st.session_state["user_name"] = full_name.split()[0]
 
-        return True  # signals app.py to reload and show the digest
+        return True 
 
-    return False  # form not submitted yet
+    return False 

@@ -22,15 +22,15 @@ RSS_FEEDS = [
     # Industry news
     ("STAT News",           "https://www.statnews.com/feed/"),
     ("BioPharma Dive",      "https://www.biopharmadive.com/feeds/news/"),
-    ("Fierce Biotech",      "https://www.fiercebiotech.com/rss/xml"),
+    ("BioSpace",            "https://www.biospace.com/all-news.rss"),
     ("Endpoints News",      "https://endpts.com/feed/"),
     ("MedCity News",        "https://medcitynews.com/feed/"),
-    ("PharmaLive",          "https://www.pharmalive.com/feed/"),
+    ("Pharmaceutical Tech", "https://www.pharmaceutical-technology.com/feed/"),
     # Regulatory
     ("FDA News Releases",   "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"),
     # Research journals
     ("Nature Biotech News", "https://www.nature.com/nbt.rss"),
-    ("GenomeWeb",           "https://www.genomeweb.com/rss/all"),
+    ("GEN News",            "https://feeds.feedburner.com/GenGeneticEngineeringAndBiotechnologyNews"),
     ("Cell Press (Cell)",   "https://www.cell.com/cell/inpress.rss"),
     ("Science (AAAS)",      "https://www.science.org/rss/news_current.xml"),
 ]
@@ -76,8 +76,7 @@ CACHE_TTL_SECONDS = 1800
 #leave everything else as is, untul day 7 --> whenwe tackle email
 
 EMAIL_ENABLED  = True
-EMAIL_FROM     = os.getenv("EMAIL_FROM", "")      # Your Gmail address
-EMAIL_TO       = os.getenv("EMAIL_TO", "")        # Where digest gets sent (can be same as above)
+EMAIL_FROM     = os.getenv("EMAIL_FROM", "")      # Your Gmail address — also the SMTP login
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")  # Gmail App Password — NOT your real password
 SMTP_HOST      = "smtp.gmail.com"                  # Gmail's mail server — don't change this
 SMTP_PORT      = 587                               # Standard email port — don't change this

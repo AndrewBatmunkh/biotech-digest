@@ -2,7 +2,7 @@ from groq import Groq
 import json
 from config import GROQ_API_KEY
 
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=GROQ_API_KEY, timeout=30.0)  # fail fast instead of hanging forever on a stuck request
 
 PROMPT_TEMPLATE = """
 You are a senior biotech analyst writing intelligence briefings.

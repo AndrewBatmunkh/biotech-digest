@@ -1,16 +1,17 @@
 import feedparser   # reads xmL and converts it, the library that downloads + parses RSS feeds into Python dicts
-import datetime  # built-in Python tool for working with dates and times
-import re          # built-in tool for removing HTML tags from text
+import datetime  
+import re          # removing HTML tags from text
 import requests    # downloads the full article HTML page
-import trafilatura # extracts clean body text from HTML (strips ads, nav, footers)
+import trafilatura # extracts clean body text from HTML 
 from concurrent.futures import ThreadPoolExecutor, as_completed  # fetch many articles at once in parallel
 
 from config import RSS_FEEDS,  MAX_ARTICLES_PER_FEED
 
 SCRAPE_TIMEOUT   = 10    # seconds to wait per article before giving up
 SCRAPE_MAX_CHARS = 3000  # truncate so AI prompt stays a reasonable size
-SCRAPE_WORKERS   = 1     # how many articles to download at the same time
+SCRAPE_WORKERS   = 8     # how many articles to download at the same time
 
+USER_AGENT = "Mozilla/5.0 (compatible; BiotechDigestBot/1.0)"
 
 ###DATE FIXER FUNCTION
 # feedparser gives dates as a tuple like (2026, 5, 5, 8, 0, 0)
@@ -18,11 +19,10 @@ SCRAPE_WORKERS   = 1     # how many articles to download at the same time
 def _parse_date(entry):
     if hasattr(entry, "published_parsed") and entry.published_parsed:
         try:
-            return datetime.datetime(*entry.published_parsed[:6]) #unpacks them in seperate arguments
+            return datetime.datetime(*entry.published_parsed[:6])
         except (TypeError, ValueError):
             pass
-    return datetime.datetime.now()  # fallback: use right now if no date found
-
+    return datetime.datetime.now() 
 
 ### TEXT CLEANING FUNCTION
 def _clean_text(raw):
@@ -32,14 +32,12 @@ def _clean_text(raw):
 #re.sub find HTML tag and deletes it, anything that starts with < and > , then .strip() removes any leftover spaces from start to end
 
 ###NEW FUNCTION! --> HELPS PULL FULL TEXT --> BETTER AI SUMMARY?
-# Downloads the full article page and returns clean plain text
-# Falls back to "" if the site blocks us, times out, or has no extractable text
 def _fetch_full_text(url):
     try:
         resp = requests.get(
             url,
             timeout=SCRAPE_TIMEOUT,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; BiotechDigestBot/1.0)"},
+            headers={"User-Agent": USER_AGENT},
         )
         resp.raise_for_status()
         text = trafilatura.extract(
@@ -54,9 +52,7 @@ def _fetch_full_text(url):
         pass
     return ""
 
-###ARTICLE THREADER FUNCTION
-# Sends all articles to a thread pool so scraping happens in parallel, not one-by-one
-# Without this, 77 articles × 10s timeout = potentially 13 minutes of waiting
+###ARTICLE THREADER FUNCTION --> parallelizes the scraping of full text for all articles
 def _scrape_articles(articles):
     def _worker(article):
         article["full_text"] = _fetch_full_text(article["url"])
@@ -71,12 +67,11 @@ def _scrape_articles(articles):
 
 
 ###MAIN FUNCTION — fetches all articles from all feeds
-#no input is needed - all from config.py - this will be later used in app.py
 def fetch_all_articles():
     all_articles = [] #empty list, put article dictionaries one by one
     for source_name, feed_url in RSS_FEEDS: # loops through the  feeds in config.py
         try:
-            feed = feedparser.parse(feed_url) # goes to the url, downlaods the RSS XML
+            feed = feedparser.parse(feed_url, request_headers={"User-Agent": USER_AGENT}) # goes to the url, downlaods the RSS XML
             if feed.bozo and not feed.entries:
                 print(f"skipping {source_name}")
                 continue
@@ -109,13 +104,13 @@ def fetch_all_articles():
 if __name__ == "__main__":
     print("Fetching articles...")
     articles = fetch_all_articles()
-    print(f"\nFetched {len(articles)} articles total\n") # countr the items in list
+    print(f"\nFetched {len(articles)} articles total\n") 
 
     for article in articles[:5]:
         print(f"SOURCE:    {article['source']}")
         print(f"TITLE:     {article['title']}")
         print(f"PUBLISHED: {article['published']}") 
         print(f"URL:       {article['url']}")
-        body = article["full_text"] or article["raw_summary"]  # prefer full text, fall back to RSS excerpt
-        print(f"BODY:      {body[:150]}...") # takes the first 150 characters
-        print("-" * 60) #prints lines of 60 dashes in visual divider
+        body = article["full_text"] or article["raw_summary"] 
+        print(f"BODY:      {body[:150]}...")
+        print("-" * 60)

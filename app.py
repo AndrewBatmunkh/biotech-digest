@@ -1,7 +1,6 @@
 # app.py — the Streamlit UI
 # streamlit run app.py
 
-
 import streamlit as st 
 import datetime 
 
@@ -374,9 +373,9 @@ def build_sidebar(user_id, profile):
         from emailer import send_digest_email
         if st.sidebar.button("📧 Send digest now", use_container_width=True):
             with st.sidebar.spinner("Building and sending digest..."):
-                success = send_digest_email()
+                success = send_digest_email(get_user(user_id))
             if success:
-                st.sidebar.success("✅ Digest sent!")
+                st.sidebar.success("✅ Digest sent to your email!")
             else:
                 st.sidebar.error("❌ Send failed — check your .env config.")
 

@@ -8,16 +8,16 @@ import datetime # time
 import os #file path
 from dotenv import load_dotenv
 
-load_dotenv()  # reads the .env file
-DATABASE_URL = os.getenv("SUPABASE_URL")  # Postgres connection string from Supabase
+load_dotenv()  
+DATABASE_URL = os.getenv("SUPABASE_URL") 
 
-# SETUP — creates database and tables if they don't exist --> WONT OVERWRITE
+# SETUP--> WONT OVERWRITE
 def init_db():
     """Create all tables if they don't already exist."""
     conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor() #like the pen
+    cursor = conn.cursor() 
 
-    # users table — one row = one personV-->  for now just you, expandable later
+    # users table — one row = one person 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id         SERIAL PRIMARY KEY,
@@ -28,8 +28,6 @@ def init_db():
     """)
 
     # profiles table — onboarding answers linked to a user
-    # focus_areas and what_matters stored as JSON strings
-    # keeps the same simple text-column shape the app already expects
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS profiles (
             id               SERIAL PRIMARY KEY,
@@ -47,7 +45,6 @@ def init_db():
     """)
 
     # starred table — saved articles linked to a user
-    # ai_summary stored as JSON string
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS starred (
             id          SERIAL PRIMARY KEY,
@@ -81,7 +78,9 @@ def create_user(full_name, email):
     """
     Create a new user. Returns the new user's id.
     If email already exists, returns the existing user's id.
+  
     """
+    email = email.strip().lower()
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
@@ -128,37 +127,28 @@ def get_user(user_id):
     return None
 
 
+def get_all_users():
+    """Get every user in the database — used to send each person their own digest."""
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, full_name, email, created_at FROM users")
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {"id": row[0], "full_name": row[1], "email": row[2], "created_at": row[3]}
+        for row in rows
+    ]
+
+
 def get_user_by_email(email):
-    """Look up a user by email. Returns a dict or None."""
+    """Look up a user by email (case-insensitive). Returns a dict or None."""
+    email = email.strip().lower()
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, full_name, email, created_at FROM users WHERE email = %s",
         (email,)
-    )
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        return {
-            "id":         row[0],
-            "full_name":  row[1],
-            "email":      row[2],
-            "created_at": row[3]
-        }
-    return None
-
-
-def get_first_user():
-    """
-    Get the first user in the database.
-    Used for single-user mode — your personal app.
-    Returns a dict or None if no users exist yet.
-    """
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, full_name, email, created_at FROM users LIMIT 1"
     )
     row = cursor.fetchone()
     conn.close()
