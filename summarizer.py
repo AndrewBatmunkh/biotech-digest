@@ -46,7 +46,11 @@ Respond ONLY with this JSON — no markdown, no code fences:
     "importance": "1-2 sentences max. What problem this solves in plain English, how many people are affected globally, why current treatments fail, what changes for patients if this works.",
     "market": "1-2 sentences max. Market size in dollars, named competitors and where they are in development, deal values, commercial potential and timeline to revenue.",
     "limitations": "1-2 sentences max. What could go wrong in plain English, safety concerns with numbers if available, regulatory hurdles, manufacturing or scaling challenges.",
-    "next_steps": "1-2 sentences max. What happens next with specific timelines, planned trials, upcoming regulatory decisions, conference presentations, partnerships to watch."
+    "next_steps": "1-2 sentences max. What happens next with specific timelines, planned trials, upcoming regulatory decisions, conference presentations, partnerships to watch.",
+    "company": "The name of the company developing or announcing the product, drug, or deal, exactly as written in the article. Use null if the article is about a university, hospital, government agency, or lab with no company involved, or if no company is named anywhere. Never guess or use outside knowledge.",
+    "company_is_public": "true, false, or null — only set true or false if the article explicitly states whether the company is publicly traded or private. Otherwise null. Do not guess, and do not include tickers, market caps, or prices here.",
+    "news_sentiment": "\"positive\", \"negative\", \"neutral\", or \"mixed\" — the tone of THIS article toward the named company only, based strictly on what it reports (trial success, approval, deal, setback, safety issue, delay). Use null if company is null. Never call this a prediction or forecast.",
+    "sentiment_reason": "One sentence citing the specific fact from the article that drove the news_sentiment rating (e.g. 'Phase 3 trial met its primary endpoint'). Use null if company is null."
 }}
 
 Article title: {title}
@@ -137,4 +141,8 @@ if __name__ == "__main__":# we import fetch here so we can grab one real article
         print(f"Market:       {result.get('market', '—')}")
         print(f"Limitations:  {result.get('limitations', '—')}")
         print(f"Next Steps:   {result.get('next_steps', '—')}")
+        print(f"Company:      {result.get('company', '—')}")
+        print(f"Is Public:    {result.get('company_is_public', '—')}")
+        print(f"News Tone:    {result.get('news_sentiment', '—')}")
+        print(f"Tone Reason:  {result.get('sentiment_reason', '—')}")
 

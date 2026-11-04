@@ -7,6 +7,7 @@ import datetime
 from config import TOPICS, RSS_FEEDS, EMAIL_ENABLED
 from fetcher import fetch_all_articles #downloads the RSS feeds
 from summarizer import summarize_article #groq ai
+from company_data import prefetch_companies #company/ticker/price lookups — never calls Groq
 
 # at the top of app.py add this import
 from database import (
@@ -137,7 +138,7 @@ def score_article(article, profile=None):
     score = 0
 
     # results with real numbers are more useful than vague summaries
-    if any(ch.isdigit() for ch in summary.get("results", "").lower()):
+    if any(ch.isdigit() for ch in (summary.get("results") or "").lower()):
         score += 3
 
     # full article text means the AI had more to work with
@@ -178,6 +179,59 @@ def score_article(article, profile=None):
     return score
 
 
+def _escape_dollars(text):
+    """Streamlit renders '$' as LaTeX math in markdown/write — escape it so
+    values like '$115 billion' or '$12.4B' display as literal text."""
+    if not isinstance(text, str):
+        return text
+    return text.replace("$", "\\$")
+
+
+def _format_market_cap(value):
+    """123_400_000_000 -> '$123.4B', 850_000_000 -> '$850.0M', etc."""
+    if value is None:
+        return "—"
+    value = float(value)
+    for suffix, divisor in (("T", 1e12), ("B", 1e9), ("M", 1e6)):
+        if value >= divisor:
+            return f"${value / divisor:.1f}{suffix}"
+    return f"${value:,.0f}"
+
+
+def _format_pct(value):
+    """0.0725 -> '+7.3%', -0.04 -> '-4.0%'. None -> 'unavailable'."""
+    if value is None:
+        return "unavailable"
+    return f"{value * 100:+.1f}%"
+
+
+def _format_trend_line(market_data, fundamentals):
+    """Calculated-only trend indicators — never estimates a missing value,
+    always shows 'unavailable' instead."""
+    trend = market_data.get("trend") or "unavailable"
+    pct_6mo = market_data.get("pct_change_6mo")
+    pct_6mo_str = f"{pct_6mo:+.1f}%" if pct_6mo is not None else "unavailable"
+
+    fundamentals = fundamentals or {}
+    revenue_growth = _format_pct(fundamentals.get("revenue_growth"))
+    earnings_growth = _format_pct(fundamentals.get("earnings_growth"))
+
+    rating = fundamentals.get("analyst_rating")
+    target = fundamentals.get("analyst_target_price")
+    if rating or target:
+        rating_str = rating.replace("_", " ").title() if rating else "unavailable"
+        target_str = f"${target:,.2f}" if target is not None else "unavailable"
+        analyst_str = f"{rating_str} (target: {target_str})"
+    else:
+        analyst_str = "unavailable"
+
+    return (
+        f"**Trend:** {trend} · **6-month change:** {pct_6mo_str}  \n"
+        f"**Revenue growth (YoY):** {revenue_growth} · **Earnings growth (YoY):** {earnings_growth}  \n"
+        f"**Analyst consensus:** {analyst_str}"
+    )
+
+
 # ARTICLE CARD — renders one article in the UI
 # st.expander creates a clickable dropdown — collapsed by default
 # inside it we show the full AI summary in 3 columns
@@ -213,29 +267,86 @@ def render_card(article, user_id, starred_urls, color=None):
             st.warning(f"Could not summarise: {summary['error']}")
         else:
             st.markdown("🔬 **Technology**")
-            st.write(summary.get("technology", "—"))
+            st.write(_escape_dollars(summary.get("technology", "—")))
 
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.markdown("🏥 **Stage**")
-                st.write(summary.get("stage", "—"))
+                st.write(_escape_dollars(summary.get("stage", "—")))
             with col2:
                 st.markdown("💡 **Importance**")
-                st.write(summary.get("importance", "—"))
+                st.write(_escape_dollars(summary.get("importance", "—")))
             with col3:
                 st.markdown("📈 **Market**")
-                st.write(summary.get("market", "—"))
+                st.write(_escape_dollars(summary.get("market", "—")))
 
             st.markdown("📊 **Results**")
-            st.write(summary.get("results", "—"))
+            st.write(_escape_dollars(summary.get("results", "—")))
 
             col4, col5 = st.columns(2)
             with col4:
                 st.markdown("⚠️ **Limitations**")
-                st.write(summary.get("limitations", "—"))
+                st.write(_escape_dollars(summary.get("limitations", "—")))
             with col5:
                 st.markdown("🚀 **Next Steps**")
-                st.write(summary.get("next_steps", "—"))
+                st.write(_escape_dollars(summary.get("next_steps", "—")))
+
+            # COMPANY CARD — who's behind this, (if public) live-ish price data,
+            # a news-tone read from the article text, and calculated (never
+            # AI-generated) trend indicators. Market/fundamentals data is
+            # looked up once for all articles in main() via prefetch_companies(),
+            # never per-card, so this is just a dict lookup — no blocking here.
+            company_name = summary.get("company")
+            st.divider()
+            st.markdown("🏢 **Company**")
+
+            if not company_name:
+                st.markdown(
+                    '<span style="background:#888888;color:white;font-size:0.72rem;'
+                    'padding:2px 8px;border-radius:10px">No company mentioned</span>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                entry = st.session_state.get("company_data", {}).get(company_name)
+
+                news_sentiment = summary.get("news_sentiment")
+                sentiment_reason = summary.get("sentiment_reason")
+                if news_sentiment:
+                    st.markdown(_escape_dollars(
+                        f"**News tone:** {news_sentiment.capitalize()}"
+                        + (f" — {sentiment_reason}" if sentiment_reason else "")
+                    ))
+
+                if not entry or not entry.get("ticker"):
+                    st.markdown(
+                        f'{_escape_dollars(company_name)} &nbsp; '
+                        f'<span style="background:#888888;color:white;font-size:0.72rem;'
+                        f'padding:2px 8px;border-radius:10px">Private / no listing found</span>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    market_data = entry.get("market_data")
+                    if not market_data:
+                        st.write(f"{_escape_dollars(company_name)} — Market data unavailable")
+                    else:
+                        price = market_data.get("price")
+                        currency = market_data.get("currency", "USD")
+                        cap_str = _format_market_cap(market_data.get("market_cap"))
+                        st.markdown(_escape_dollars(
+                            f"**{company_name}** ({entry['ticker']}) — "
+                            f"{currency} {price:,.2f} · Market cap: {cap_str}"
+                        ))
+                        history = market_data.get("history")
+                        if history is not None and len(history) > 0:
+                            st.line_chart(history, height=120)
+
+                        st.markdown(_escape_dollars(_format_trend_line(market_data, entry.get("fundamentals"))))
+
+                st.caption(
+                    "News tone is based on this article only. Trend data via Yahoo Finance, "
+                    "delayed ~15 min. Indicators describe the past, not a forecast. "
+                    "Not financial advice."
+                )
 
         col_link, col_star = st.columns([4, 1])
         with col_link:
@@ -382,6 +493,7 @@ def build_sidebar(user_id, profile):
     # clears the session-stored articles so main() re-fetches and re-summarises on the next rerun
     if st.sidebar.button("🔄 Refresh feed", use_container_width=True):
         st.session_state.pop("articles", None)
+        st.session_state.pop("company_data", None)
         st.rerun()
 
     st.sidebar.divider()
@@ -508,6 +620,12 @@ def main():
     if not articles:
         st.error("No articles fetched. Check your RSS feeds in config.py.")
         return
+
+    # resolve companies -> tickers/price/market cap once per session, in parallel,
+    # never per-card — reused across reruns/view switches until "Refresh feed" clears it
+    if "company_data" not in st.session_state:
+        with st.spinner("Looking up company data..."):
+            st.session_state["company_data"] = prefetch_companies(articles)
 
     starred_urls = {a["url"] for a in get_starred(user["id"])}
 
